@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>サッカー練習メニュー生成</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+            background: linear-gradient(135deg, #1a5f1a 0%, #2d8a2d 50%, #1a5f1a 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #1a5f1a;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .soccer-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: #2d8a2d;
+            box-shadow: 0 0 0 3px rgba(45, 138, 45, 0.2);
+        }
+
+        .form-group input[type="text"]::placeholder {
+            color: #aaa;
+        }
+
+        .examples {
+            margin-top: 10px;
+        }
+
+        .examples span {
+            display: inline-block;
+            background: #f0f7f0;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+            color: #1a5f1a;
+            margin: 5px 5px 0 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .examples span:hover {
+            background: #d4e8d4;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #2d8a2d 0%, #1a5f1a 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(45, 138, 45, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2d8a2d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="soccer-icon">⚽</div>
+            <h1>サッカー練習メニュー生成</h1>
+            <p>AIが練習課題に合わせた練習メニューをExcelファイルで作成します</p>
+        </div>
+
+        <form id="practiceForm">
+            <div class="form-group">
+                <label for="challenge">練習課題を入力してください</label>
+                <input
+                    type="text"
+                    id="challenge"
+                    name="challenge"
+                    placeholder="例: 4人でのパス練習"
+                    required
+                >
+                <div class="examples">
+                    <span onclick="setExample('4人でのパス練習')">4人でのパス練習</span>
+                    <span onclick="setExample('シュート練習')">シュート練習</span>
+                    <span onclick="setExample('守備練習')">守備練習</span>
+                    <span onclick="setExample('ドリブル突破')">ドリブル突破</span>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+                📊 練習メニューを生成
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p id="loadingText">AIが練習メニューを設計中...</p>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="footer">
+            Powered by OpenRouter API & GPT-4o
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('practiceForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+        const status = document.getElementById('status');
+        const challengeInput = document.getElementById('challenge');
+
+        function setExample(text) {
+            challengeInput.value = text;
+            challengeInput.focus();
+        }
+
+        function showLoading(show) {
+            loading.classList.toggle('active', show);
+            submitBtn.disabled = show;
+            if (show) {
+                status.style.display = 'none';
+            }
+        }
+
+        function showStatus(message, isError = false) {
+            status.textContent = message;
+            status.className = 'status ' + (isError ? 'error' : 'success');
+        }
+
+        const loadingMessages = [
+            'AIが練習メニューを設計中...',
+            '練習ステップを分析中...',
+            '図解を作成中...',
+            'Excelファイルを生成中...'
+        ];
+
+        let messageIndex = 0;
+        let messageInterval;
+
+        function startLoadingAnimation() {
+            messageIndex = 0;
+            loadingText.textContent = loadingMessages[0];
+            messageInterval = setInterval(() => {
+                messageIndex = (messageIndex + 1) % loadingMessages.length;
+                loadingText.textContent = loadingMessages[messageIndex];
+            }, 3000);
+        }
+
+        function stopLoadingAnimation() {
+            if (messageInterval) {
+                clearInterval(messageInterval);
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const challenge = challengeInput.value.trim();
+            if (!challenge) {
+                showStatus('練習課題を入力してください', true);
+                return;
+            }
+
+            showLoading(true);
+            startLoadingAnimation();
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ challenge }),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '生成に失敗しました');
+                }
+
+                // Download the file
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'practice_menu.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                showStatus('✅ Excelファイルをダウンロードしました！');
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('❌ ' + error.message, true);
+            } finally {
+                showLoading(false);
+                stopLoadingAnimation();
+            }
+        });
+
+        // Check API health on load
+        fetch('/api/health')
+            .then(res => res.json())
+            .then(data => {
+                if (!data.api_key_configured) {
+                    showStatus('⚠️ APIキーが設定されていません。サーバー管理者に連絡してください。', true);
+                }
+            })
+            .catch(() => {
+                // Ignore health check errors
+            });
+    </script>
+</body>
+</html>
