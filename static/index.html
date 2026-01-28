@@ -221,8 +221,8 @@
 
         <div class="status" id="status"></div>
 
-        <div class="footer">
-            Powered by OpenRouter API & GPT-4o
+        <div class="footer" id="footer">
+            Powered by GPT-4o
         </div>
     </div>
 
@@ -331,6 +331,10 @@
             .then(data => {
                 if (!data.api_key_configured) {
                     showStatus('⚠️ APIキーが設定されていません。サーバー管理者に連絡してください。', true);
+                }
+                // Update footer with provider info
+                if (data.provider) {
+                    document.getElementById('footer').textContent = `Powered by ${data.provider} & GPT-4o`;
                 }
             })
             .catch(() => {

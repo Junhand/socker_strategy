@@ -64,10 +64,13 @@ async def generate_practice_menu(request: PracticeRequest):
     if not request.challenge.strip():
         raise HTTPException(status_code=400, detail="練習課題を入力してください")
 
-    # Check API key
-    if not os.getenv("OPENROUTER_API_KEY"):
+    # Check API key (either OpenRouter or Azure)
+    has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
+    has_azure = bool(os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"))
+    if not has_openrouter and not has_azure:
         raise HTTPException(
-            status_code=500, detail="OPENROUTER_API_KEY環境変数が設定されていません"
+            status_code=500,
+            detail="APIキーが設定されていません。OPENROUTER_API_KEY または AZURE_OPENAI_API_KEY/AZURE_OPENAI_ENDPOINT を設定してください",
         )
 
     try:
@@ -95,9 +98,21 @@ async def generate_practice_menu(request: PracticeRequest):
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
+    has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
+    has_azure = bool(os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"))
+
+    # Detect which provider will be used
+    if has_azure:
+        provider = "Azure OpenAI"
+    elif has_openrouter:
+        provider = "OpenRouter"
+    else:
+        provider = None
+
     return {
         "status": "ok",
-        "api_key_configured": bool(os.getenv("OPENROUTER_API_KEY")),
+        "api_key_configured": has_openrouter or has_azure,
+        "provider": provider,
     }
 
 
