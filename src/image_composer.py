@@ -38,7 +38,7 @@ class ImageComposer:
         )
 
     def compose_step_diagram(self, step: dict) -> Image.Image:
-        """Compose a diagram for a practice step.
+        """Compose a diagram for a practice step (legacy method for backward compatibility).
 
         Args:
             step: Step data containing players, movements, and ball_movements.
@@ -113,6 +113,252 @@ class ImageComposer:
             draw.text((label_x, label_y), label, fill="black", anchor="mm")
 
         return diagram
+
+    def compose_step_diagram_separate(self, step: dict) -> dict:
+        """Compose a diagram with separate images for ground, players, and arrows.
+
+        Args:
+            step: Step data containing players, movements, and ball_movements.
+
+        Returns:
+            Dictionary containing:
+                - ground: Ground image without overlays (PIL Image)
+                - players: List of dicts with 'image', 'x', 'y', 'label' for each player
+                - arrows: List of dicts with 'image', 'x', 'y', 'type' for each arrow
+                - ground_size: Tuple (width, height) of ground image
+        """
+        # Use clean ground image (no arrows drawn on it)
+        ground = self.ground_image.copy()
+
+        width, height = ground.size
+        person_w, person_h = self.person_image.size
+
+        # Create arrow images for ball movements (orange, dashed, offset to one side)
+        arrow_data = []
+        ball_movements = step.get("ball_movements", [])
+        for movement in ball_movements:
+            from_pos = movement.get("from", {})
+            to_pos = movement.get("to", {})
+
+            from_x = int(from_pos.get("x", 0.5) * width)
+            from_y = int(from_pos.get("y", 0.5) * height)
+            to_x = int(to_pos.get("x", 0.5) * width)
+            to_y = int(to_pos.get("y", 0.5) * height)
+
+            # Create arrow image with positive perpendicular offset
+            arrow_img, arrow_x, arrow_y = self._create_arrow_image(
+                from_x, from_y, to_x, to_y, color="orange", dashed=True,
+                offset_perpendicular=6  # Offset to avoid overlap with player arrows
+            )
+            arrow_data.append({
+                "image": arrow_img,
+                "x": arrow_x,
+                "y": arrow_y,
+                "type": "ball",
+            })
+
+        # Create arrow images for player movements (blue, solid, offset to other side)
+        movements = step.get("movements", [])
+        player_positions = {p["id"]: p["position"] for p in step.get("players", [])}
+
+        for movement in movements:
+            from_player = movement.get("from_player", "")
+            to_pos = movement.get("to_position", {})
+
+            if from_player in player_positions:
+                from_pos = player_positions[from_player]
+                from_x = int(from_pos.get("x", 0.5) * width)
+                from_y = int(from_pos.get("y", 0.5) * height)
+                to_x = int(to_pos.get("x", 0.5) * width)
+                to_y = int(to_pos.get("y", 0.5) * height)
+
+                # Create arrow image with negative perpendicular offset
+                arrow_img, arrow_x, arrow_y = self._create_arrow_image(
+                    from_x, from_y, to_x, to_y, color="blue", dashed=False,
+                    offset_perpendicular=-6  # Offset to opposite side from ball arrows
+                )
+                arrow_data.append({
+                    "image": arrow_img,
+                    "x": arrow_x,
+                    "y": arrow_y,
+                    "type": "player",
+                })
+
+        # Create player images with labels
+        player_data = []
+        players = step.get("players", [])
+        for player in players:
+            pos = player.get("position", {})
+            # Calculate position (center of player)
+            center_x = int(pos.get("x", 0.5) * width)
+            center_y = int(pos.get("y", 0.5) * height)
+
+            # Create player image with label
+            label = player.get("id", "")
+            player_img = self._create_labeled_player(label)
+
+            player_data.append({
+                "image": player_img,
+                "x": center_x,
+                "y": center_y,
+                "label": label,
+            })
+
+        return {
+            "ground": ground,
+            "players": player_data,
+            "arrows": arrow_data,
+            "ground_size": (width, height),
+        }
+
+    def _create_arrow_image(
+        self, from_x: int, from_y: int, to_x: int, to_y: int,
+        color: str, dashed: bool, offset_perpendicular: int = 0,
+        length_ratio: float = 0.75
+    ) -> tuple[Image.Image, int, int]:
+        """Create a transparent arrow image.
+
+        Args:
+            from_x, from_y: Start position.
+            to_x, to_y: End position.
+            color: Arrow color.
+            dashed: Whether to draw dashed line.
+            offset_perpendicular: Offset perpendicular to the arrow direction (to avoid overlap).
+            length_ratio: Ratio of arrow length (0.75 = 75% of original length).
+
+        Returns:
+            Tuple of (arrow image, center_x, center_y) where center is the position
+            to place the image on the ground.
+        """
+        import math
+
+        # Shorten arrow to specified ratio (from center of the line)
+        if length_ratio < 1.0:
+            center_x_orig = (from_x + to_x) / 2
+            center_y_orig = (from_y + to_y) / 2
+            # Scale from center
+            from_x = int(center_x_orig + (from_x - center_x_orig) * length_ratio)
+            from_y = int(center_y_orig + (from_y - center_y_orig) * length_ratio)
+            to_x = int(center_x_orig + (to_x - center_x_orig) * length_ratio)
+            to_y = int(center_y_orig + (to_y - center_y_orig) * length_ratio)
+
+        # Apply perpendicular offset to avoid overlapping arrows
+        if offset_perpendicular != 0:
+            dx = to_x - from_x
+            dy = to_y - from_y
+            length = math.sqrt(dx * dx + dy * dy)
+            if length > 0:
+                # Perpendicular unit vector
+                perp_x = -dy / length
+                perp_y = dx / length
+                # Apply offset
+                from_x = int(from_x + perp_x * offset_perpendicular)
+                from_y = int(from_y + perp_y * offset_perpendicular)
+                to_x = int(to_x + perp_x * offset_perpendicular)
+                to_y = int(to_y + perp_y * offset_perpendicular)
+
+        # Calculate bounding box with padding for arrow head
+        padding = 25  # Increased padding for larger arrows
+        min_x = min(from_x, to_x) - padding
+        min_y = min(from_y, to_y) - padding
+        max_x = max(from_x, to_x) + padding
+        max_y = max(from_y, to_y) + padding
+
+        img_width = max_x - min_x
+        img_height = max_y - min_y
+
+        # Ensure minimum size
+        img_width = max(img_width, 40)
+        img_height = max(img_height, 40)
+
+        # Create transparent image
+        arrow_img = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(arrow_img)
+
+        # Translate coordinates to image space
+        local_from_x = from_x - min_x
+        local_from_y = from_y - min_y
+        local_to_x = to_x - min_x
+        local_to_y = to_y - min_y
+
+        # Draw line with increased width
+        line_width = 5  # Increased from 3
+        if dashed:
+            self._draw_dashed_line(
+                draw, local_from_x, local_from_y, local_to_x, local_to_y,
+                fill=color, width=line_width, dash_length=15
+            )
+        else:
+            draw.line(
+                [(local_from_x, local_from_y), (local_to_x, local_to_y)],
+                fill=color, width=line_width
+            )
+
+        # Draw larger arrow head
+        self._draw_arrow_head(
+            draw, local_from_x, local_from_y, local_to_x, local_to_y,
+            fill=color, size=18  # Increased from 10
+        )
+
+        # Return image and its center position on the ground
+        center_x = min_x + img_width // 2
+        center_y = min_y + img_height // 2
+
+        return arrow_img, center_x, center_y
+
+    def _create_labeled_player(self, label: str) -> Image.Image:
+        """Create a player image with a label above it.
+
+        Args:
+            label: Label text for the player.
+
+        Returns:
+            PIL Image with player and label.
+        """
+        person_w, person_h = self.person_image.size
+        label_height = 20
+        padding = 4
+
+        # Create canvas for player + label
+        canvas_width = max(person_w, len(label) * 8 + padding * 2)
+        canvas_height = person_h + label_height
+        canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+
+        # Paste person image centered
+        person_x = (canvas_width - person_w) // 2
+        person_y = label_height
+        canvas.paste(self.person_image, (person_x, person_y), self.person_image)
+
+        # Draw label
+        draw = ImageDraw.Draw(canvas)
+        label_x = canvas_width // 2
+        label_y = label_height // 2
+
+        # Draw label background
+        bbox = draw.textbbox((label_x, label_y), label, anchor="mm")
+        draw.rectangle(
+            [bbox[0] - padding, bbox[1] - padding, bbox[2] + padding, bbox[3] + padding],
+            fill="white",
+        )
+        draw.text((label_x, label_y), label, fill="black", anchor="mm")
+
+        return canvas
+
+    def get_ground_image(self) -> Image.Image:
+        """Get a copy of the ground image.
+
+        Returns:
+            Copy of the ground PIL Image.
+        """
+        return self.ground_image.copy()
+
+    def get_player_image(self) -> Image.Image:
+        """Get a copy of the player image.
+
+        Returns:
+            Copy of the player PIL Image.
+        """
+        return self.person_image.copy()
 
     def _draw_dashed_line(
         self,

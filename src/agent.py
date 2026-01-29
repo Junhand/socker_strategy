@@ -41,15 +41,15 @@ class PracticeMenuAgent:
         practice_plan = self.llm_client.generate_practice_plan(challenge)
         print(f"✅ 練習メニュー「{practice_plan.get('title', '')}」を生成しました")
 
-        # Step 2: Generate images for each step
+        # Step 2: Generate images for each step (separate images for ground and players)
         print("🎨 図解を作成中...")
-        step_images: list[Image.Image] = []
+        step_images: list[dict] = []
         steps = practice_plan.get("steps", [])
 
         for i, step in enumerate(steps):
             print(f"   ステップ {i + 1}/{len(steps)}: {step.get('name', '')}")
-            diagram = self.image_composer.compose_step_diagram(step)
-            step_images.append(diagram)
+            diagram_data = self.image_composer.compose_step_diagram_separate(step)
+            step_images.append(diagram_data)
 
         # Step 3: Create Excel file
         print("📊 Excelファイルを作成中...")
@@ -77,13 +77,13 @@ class PracticeMenuAgent:
         Returns:
             Path to the generated Excel file.
         """
-        # Generate images for each step
-        step_images: list[Image.Image] = []
+        # Generate images for each step (separate images for ground and players)
+        step_images: list[dict] = []
         steps = practice_plan.get("steps", [])
 
         for step in steps:
-            diagram = self.image_composer.compose_step_diagram(step)
-            step_images.append(diagram)
+            diagram_data = self.image_composer.compose_step_diagram_separate(step)
+            step_images.append(diagram_data)
 
         # Create Excel file
         self.excel_generator.create_practice_sheet(practice_plan, step_images)

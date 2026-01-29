@@ -4,8 +4,11 @@ from pathlib import Path
 from PIL import Image
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+from openpyxl.drawing.xdr import XDRPositiveSize2D
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.units import pixels_to_EMU
 import tempfile
 import os
 
@@ -91,26 +94,32 @@ class ExcelGenerator:
 
             # Image
             if i < len(step_images):
-                img = step_images[i]
-                # Save image to temp file
-                temp_path = self._save_temp_image(img, f"step_{i}.png")
-                xl_img = XLImage(temp_path)
+                step_data = step_images[i]
 
-                # Resize image to fit cell
-                max_width = 350
-                max_height = 200
-                aspect_ratio = img.width / img.height
+                if isinstance(step_data, dict) and "ground" in step_data:
+                    # Separate images mode - ground and players are separate
+                    self._add_separate_images(ws, current_row, i, step_data)
+                else:
+                    # Legacy mode - single combined image
+                    img = step_data
+                    temp_path = self._save_temp_image(img, f"step_{i}.png")
+                    xl_img = XLImage(temp_path)
 
-                if img.width > max_width:
-                    xl_img.width = max_width
-                    xl_img.height = int(max_width / aspect_ratio)
-                if xl_img.height > max_height:
-                    xl_img.height = max_height
-                    xl_img.width = int(max_height * aspect_ratio)
+                    # Resize image to fit cell
+                    max_width = 350
+                    max_height = 200
+                    aspect_ratio = img.width / img.height
 
-                # Add image to cell
-                img_cell = f"B{current_row}"
-                ws.add_image(xl_img, img_cell)
+                    if img.width > max_width:
+                        xl_img.width = max_width
+                        xl_img.height = int(max_width / aspect_ratio)
+                    if xl_img.height > max_height:
+                        xl_img.height = max_height
+                        xl_img.width = int(max_height * aspect_ratio)
+
+                    # Add image to cell
+                    img_cell = f"B{current_row}"
+                    ws.add_image(xl_img, img_cell)
 
             ws.cell(row=current_row, column=2).border = thin_border
 
@@ -150,19 +159,165 @@ class ExcelGenerator:
             point_cell.alignment = left_align
             current_row += 1
 
-    def _save_temp_image(self, img: Image.Image, filename: str) -> str:
+        # Arrow legend section
+        current_row += 1
+        ws.merge_cells(f"A{current_row}:D{current_row}")
+        legend_header = ws.cell(row=current_row, column=1, value="🔰 図の見方")
+        legend_header.font = header_font
+        legend_header.fill = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
+        ws.row_dimensions[current_row].height = 25
+        current_row += 1
+
+        # Blue arrow legend
+        ws.merge_cells(f"A{current_row}:D{current_row}")
+        blue_legend = ws.cell(row=current_row, column=1, value="→ 青色の矢印（実線）: プレイヤーの動き")
+        blue_legend.font = Font(name="Meiryo", size=10, color="0000FF")
+        blue_legend.alignment = left_align
+        current_row += 1
+
+        # Orange arrow legend
+        ws.merge_cells(f"A{current_row}:D{current_row}")
+        orange_legend = ws.cell(row=current_row, column=1, value="⇢ オレンジ色の矢印（破線）: ボールの動き")
+        orange_legend.font = Font(name="Meiryo", size=10, color="FF8C00")
+        orange_legend.alignment = left_align
+        current_row += 1
+
+    def _add_separate_images(self, ws, row: int, step_idx: int, step_data: dict) -> None:
+        """Add ground and player images separately to allow individual movement.
+
+        Args:
+            ws: Worksheet to add images to.
+            row: Row number to add images at (1-indexed).
+            step_idx: Step index for unique temp file names.
+            step_data: Dictionary with 'ground', 'players', and 'ground_size'.
+        """
+        ground_img = step_data["ground"]
+        players = step_data["players"]
+        ground_width, ground_height = step_data["ground_size"]
+
+        # Calculate scaling to fit in cell
+        max_width = 350
+        max_height = 200
+        aspect_ratio = ground_width / ground_height
+
+        if ground_width > max_width:
+            display_width = max_width
+            display_height = int(max_width / aspect_ratio)
+        else:
+            display_width = ground_width
+            display_height = ground_height
+
+        if display_height > max_height:
+            display_height = max_height
+            display_width = int(max_height * aspect_ratio)
+
+        scale = display_width / ground_width
+
+        # Add ground image anchored to cell B{row}
+        ground_temp = self._save_temp_image(ground_img, f"step_{step_idx}_ground.png")
+        xl_ground = XLImage(ground_temp)
+        xl_ground.width = display_width
+        xl_ground.height = display_height
+
+        # Use OneCellAnchor - anchor to column B (index 1), row (0-indexed)
+        ground_marker = AnchorMarker(col=1, colOff=0, row=row - 1, rowOff=0)
+        ground_anchor = OneCellAnchor(
+            _from=ground_marker,
+            ext=XDRPositiveSize2D(pixels_to_EMU(display_width), pixels_to_EMU(display_height))
+        )
+        xl_ground.anchor = ground_anchor
+        ws.add_image(xl_ground)
+
+        # Add each player as a separate image
+        for p_idx, player in enumerate(players):
+            player_img = player["image"]
+            player_x = player["x"]  # Center position in original coords
+            player_y = player["y"]
+
+            # Save player image
+            player_temp = self._save_temp_image(
+                player_img, f"step_{step_idx}_player_{p_idx}.png"
+            )
+            xl_player = XLImage(player_temp)
+
+            # Scale player image
+            player_display_width = int(player_img.width * scale)
+            player_display_height = int(player_img.height * scale)
+            xl_player.width = player_display_width
+            xl_player.height = player_display_height
+
+            # Calculate offset from cell B{row} (center player on the position)
+            offset_x = int(player_x * scale) - player_display_width // 2
+            offset_y = int(player_y * scale) - player_display_height // 2
+
+            # Use OneCellAnchor with offset from cell B{row}
+            player_marker = AnchorMarker(
+                col=1,
+                colOff=pixels_to_EMU(offset_x),
+                row=row - 1,
+                rowOff=pixels_to_EMU(offset_y)
+            )
+            player_anchor = OneCellAnchor(
+                _from=player_marker,
+                ext=XDRPositiveSize2D(pixels_to_EMU(player_display_width), pixels_to_EMU(player_display_height))
+            )
+            xl_player.anchor = player_anchor
+            ws.add_image(xl_player)
+
+        # Add each arrow as a separate image
+        arrows = step_data.get("arrows", [])
+        for a_idx, arrow in enumerate(arrows):
+            arrow_img = arrow["image"]
+            arrow_x = arrow["x"]  # Center position in original coords
+            arrow_y = arrow["y"]
+
+            # Save arrow image (with transparency)
+            arrow_temp = self._save_temp_image(
+                arrow_img, f"step_{step_idx}_arrow_{a_idx}.png", preserve_alpha=True
+            )
+            xl_arrow = XLImage(arrow_temp)
+
+            # Scale arrow image
+            arrow_display_width = int(arrow_img.width * scale)
+            arrow_display_height = int(arrow_img.height * scale)
+            xl_arrow.width = arrow_display_width
+            xl_arrow.height = arrow_display_height
+
+            # Calculate offset from cell B{row} (center arrow on the position)
+            offset_x = int(arrow_x * scale) - arrow_display_width // 2
+            offset_y = int(arrow_y * scale) - arrow_display_height // 2
+
+            # Use OneCellAnchor with offset from cell B{row}
+            arrow_marker = AnchorMarker(
+                col=1,
+                colOff=pixels_to_EMU(offset_x),
+                row=row - 1,
+                rowOff=pixels_to_EMU(offset_y)
+            )
+            arrow_anchor = OneCellAnchor(
+                _from=arrow_marker,
+                ext=XDRPositiveSize2D(pixels_to_EMU(arrow_display_width), pixels_to_EMU(arrow_display_height))
+            )
+            xl_arrow.anchor = arrow_anchor
+            ws.add_image(xl_arrow)
+
+    def _save_temp_image(self, img: Image.Image, filename: str, preserve_alpha: bool = False) -> str:
         """Save image to a temporary file.
 
         Args:
             img: PIL Image to save.
             filename: Filename for the temp file.
+            preserve_alpha: If True, preserve transparency (RGBA).
 
         Returns:
             Path to the temporary file.
         """
         temp_dir = tempfile.gettempdir()
         temp_path = os.path.join(temp_dir, filename)
-        img.convert("RGB").save(temp_path, "PNG")
+        if preserve_alpha:
+            img.save(temp_path, "PNG")
+        else:
+            img.convert("RGB").save(temp_path, "PNG")
         self.temp_files.append(temp_path)
         return temp_path
 
